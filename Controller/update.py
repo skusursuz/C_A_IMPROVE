@@ -1,6 +1,4 @@
-# update.py
-import math  # Fonksiyonun başında gerekli
-
+import math  
 import random
 import networkx as nx
 
@@ -13,14 +11,14 @@ def apply_infection(G, infection_prob, pending_infections):
     already_pending = {node for node, _ in pending_infections}
 
     for node in G.nodes:
-        if G.nodes[node]["state"] == "I":  # Sadece enfekte olan yayabilir
+        if G.nodes[node]["state"] == "I":  # Seuls les infectés peuvent propager
             for neighbor in G.neighbors(node):
                 if G.nodes[neighbor]["state"] == "S" and neighbor not in already_pending:
                     if random.random() < infection_prob:
-                        delay = random.randint(1, 3)  # <- BU EKLENSİN
+                        delay = random.randint(1, 3)  # <- À AJOUTER
                         pending_infections.append((neighbor, delay))
 
-                        
+
 def update_states(G, new_states, recovery_time, quarantine_edges):
     for node in G.nodes:
         node_data = G.nodes[node]
@@ -29,8 +27,8 @@ def update_states(G, new_states, recovery_time, quarantine_edges):
         if state == "I":
             node_data["days_infected"] += 1
             if node_data["days_infected"] >= recovery_time:
-                new_states[node] = "R"  # Kalıcı bağışıklık
-                node_data["days_immune"] = 0  # Bu artık güncellenmeyecek ama resetle iyi olur
+                new_states[node] = "R"  # Immunité permanente
+                node_data["days_immune"] = 0  # Ne sera plus mis à jour, mais on le réinitialise par prudence
 
         elif state == "Q":
             node_data["days_in_quarantine"] += 1
@@ -41,7 +39,7 @@ def update_states(G, new_states, recovery_time, quarantine_edges):
                 if edges:
                     G.add_edges_from(edges)
 
-    # Durum geçişlerini uygula
+    # Appliquer les transitions d'état
     for node, state in new_states.items():
         G.nodes[node]["state"] = state
         if state in ["S", "I"]:
@@ -52,29 +50,30 @@ def apply_vaccination(G, step, vaccine_start_day, vaccination_rate, vaccination_
     if step >= vaccine_start_day:
         susceptibles = [n for n in G.nodes if G.nodes[n]["state"] == "S"]
         if susceptibles:
-            # Tutarlı artış için logaritmik bir artış modeli kullanalım
+            # Utilisation d’un modèle de croissance logarithmique pour une augmentation cohérente
             if vaccination_acceleration == 0:
                 effective_rate = vaccination_rate
             else:
-                # Logaritmik artış (yavaş başlar, giderek artar ama doygunlaşır)
+                # Croissance logarithmique (commence lentement, puis accélère et se stabilise)
                 effective_rate = vaccination_rate + vaccination_acceleration * math.log1p(step - vaccine_start_day)
 
-            # Üst sınır: %100'ü geçemez
+            # Limite supérieure : ne peut pas dépasser 100 %
             effective_rate = min(effective_rate, 1.0)
 
-            # Günlük maksimum aşılanabilecek kişi sınırı (örnek: max 50 kişi/gün)
+            # Nombre maximum de vaccinations quotidiennes (ex. : max 50 personnes/jour)
             max_daily_vaccinations = 50
             num_to_vaccinate = min(max_daily_vaccinations, int(effective_rate * len(susceptibles)))
 
-            # Aşılamayı uygula
+            # Appliquer la vaccination
             vaccinated = random.sample(susceptibles, min(num_to_vaccinate, len(susceptibles)))
             for v in vaccinated:
                 G.nodes[v]["state"] = "V"
 
-            # Konsola bilgi ver (görsel takip için)
-            print(f"[Gün {step}] Aşılama oranı: {effective_rate:.3f} | Aşılanan kişi: {len(vaccinated)}")
+            # Afficher dans la console (suivi visuel)
+            print(f"[Jour {step}] Taux de vaccination : {effective_rate:.3f} | Nombre de vaccinés : {len(vaccinated)}")
             return True, len(vaccinated)
     return False, 0
+
 
 def apply_quarantine(G, dynamic_quarantine_rate, quarantine_edges):
     for node in G.nodes:
@@ -84,29 +83,30 @@ def apply_quarantine(G, dynamic_quarantine_rate, quarantine_edges):
             G.remove_edges_from(quarantine_edges[node])
             G.nodes[node]["days_in_quarantine"] = 0
 
+
 def apply_contact_quarantine(G, quarantine_edges):
     to_quarantine = set()
-    
+
     for node in G.nodes:
         if G.nodes[node]["state"] == "I":
             for neighbor in G.neighbors(node):
                 if G.nodes[neighbor]["state"] == "S":
                     to_quarantine.add(neighbor)
-    
-    # Her bireyin kendi bağlantılarını kaldır
+
+    # Supprimer les connexions individuelles de chaque personne
     for node in to_quarantine:
         quarantine_edges[node] = list(G.edges(node))
         G.remove_edges_from(quarantine_edges[node])
         G.nodes[node]["state"] = "Q"
         G.nodes[node]["days_in_quarantine"] = 0
 
-    # Karantinadaki bireylerin birbirleriyle olan bağlantılarını da kaldır
+    # Supprimer également les connexions entre les personnes en quarantaine
     quarantined_list = list(to_quarantine)
     for i in range(len(quarantined_list)):
         for j in range(i + 1, len(quarantined_list)):
             u, v = quarantined_list[i], quarantined_list[j]
             if G.has_edge(u, v):
                 G.remove_edge(u, v)
-                # Bunları da kaydetmek istersen quarantine_edges'e ekleyebilirsin:
+                # Si souhaité, enregistrer aussi ces liens dans quarantine_edges :
                 quarantine_edges.setdefault(u, []).append((u, v))
                 quarantine_edges.setdefault(v, []).append((u, v))

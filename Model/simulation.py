@@ -1,27 +1,35 @@
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+# === Standard Library ===
 import csv
+import random
+import threading
+from datetime import datetime
 import tkinter as tk
-from tkinter import ttk
-from tkinter import BooleanVar, Checkbutton
+from tkinter import ttk, BooleanVar, Checkbutton
 from itertools import count
+
+# === Third-Party Libraries ===
 import networkx as nx
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 import matplotlib.animation as animation
-import random
-from datetime import datetime
-import threading
 
-# Proje içi importlar
-from Params.constants import (
+
+
+# === Local Imports ===
+from Model.Params.constants import (
     SLIDER_CONFIGS,
     PRESETS,
     STRATEGY_CONFIGS,
     n,
     p_edge,
     quarantine_rate,
-    num_hubs
+    num_hubs,
 )
-from Params.utils import create_slider
+from Model.Params.utils import create_slider
 from Controller.record import save_history_to_csv
 from Controller.update import (
     apply_infection,
@@ -29,12 +37,11 @@ from Controller.update import (
     apply_quarantine,
     apply_vaccination,
     calculate_dynamic_quarantine_rate,
-    apply_contact_quarantine
+    apply_contact_quarantine,
 )
 
-# -----------------------------
-# Özel Ağ Oluşturma Fonksiyonu
-# -----------------------------
+
+
 degree_distribution = {
     1: 0.5,
     2: 0.4,
@@ -70,18 +77,21 @@ def custom_graph(n, degree_distribution):
     return G
 
 # -----------------------------
-# Ana Uygulama Sınıfı
+# Classe principale de l'application
 # -----------------------------
+
 class SimulationApp:
     def __init__(self, root):
         self.root = root
         self.root.title("Simulation Épidémique Interactive")
 
-        # === KONTROL PANELİ (SOLDA) ===
+        # === PANNEAU DE CONTRÔLE (À GAUCHE) ===
+
         control_frame = ttk.Frame(root)
         control_frame.pack(side=tk.LEFT, fill=tk.Y, padx=15, pady=10)
 
-        # === Paramètres (Slider'lar) ===
+        # === Paramètres (Sliders) ===
+        
         params_frame = ttk.LabelFrame(control_frame, text="Paramètres")
         params_frame.grid(row=0, column=0, columnspan=2, padx=5, pady=5, sticky="ew")
 
@@ -96,7 +106,8 @@ class SimulationApp:
             )
             setattr(self, slider["attr"], slider_widget)
 
-        # === Stratégies de confinement (Checkbox'lar) ===
+        # === Stratégies de confinement (Checkboxes) ===
+
         strategy_frame = ttk.LabelFrame(control_frame, text="Stratégies de confinement")
         strategy_frame.grid(row=1, column=0, columnspan=2, padx=5, pady=5, sticky="ew")
 
@@ -116,7 +127,8 @@ class SimulationApp:
             chk.grid(row=strategy["row"], column=0, sticky="w")
             setattr(self, strategy["attr"], var)
 
-        # === Preset Seçenekleri ===
+        # === Options de préréglage ===
+
         preset_frame = ttk.Frame(control_frame)
         preset_frame.grid(row=2, column=0, columnspan=2, pady=(10, 0))
 
@@ -129,13 +141,15 @@ class SimulationApp:
         self.spanish_flu_button = ttk.Button(preset_frame, text="Grippe espagnole", command=self.set_spanish_flu_params)
         self.spanish_flu_button.grid(row=1, column=1, padx=5)
 
-        # === Simülasyon Başlat Butonu ===
+        
+        # === Bouton pour lancer la simulation ===
+
         self.start_button = ttk.Button(
             control_frame, text="▶ Lancer la simulation", command=self.start_simulation
         )
         self.start_button.grid(row=3, column=0, columnspan=2, pady=15)
 
-        # === GRAFİK PANELİ (SAĞDA, ALTLI ÜSTLÜ) ===
+        # === PANNEAU DE GRAPHIQUES (À DROITE, EN HAUT ET EN BAS) ===
         self.canvas_frame = ttk.Frame(root, width=900, height=900)
         self.canvas_frame.pack_propagate(False)  # Boyutun dışarıdan değişmesini engelle
         self.canvas_frame.pack(side=tk.RIGHT, padx=10, pady=10)
@@ -145,7 +159,7 @@ class SimulationApp:
 
         self.fig, (self.ax1, self.ax2) = plt.subplots(2, 1, figsize=(7, 9))
 
-                # === İsim & Üniversite Etiketi (Label) ===
+        
         self.credit_label = tk.Label(
             control_frame,
             text="SELIM KUSURSUZ, NADJIB ATAMNIA\nUNIVERSITÉ PARIS-SACLAY",
@@ -222,7 +236,7 @@ class SimulationApp:
         self.pending_infections = []
 
         self.vaccination_rate = vaccination_rate
-        self.vaccination_acceleration = vaccination_acceleration  # ✅ EKLENDİ
+        self.vaccination_acceleration = vaccination_acceleration 
         self.vaccine_start_day = vaccine_start_day
         self.vaccine_applied = False
 
@@ -246,7 +260,8 @@ class SimulationApp:
     def update(self, frame):
         self.step += 1
 
-        # === Karantina Stratejisi Kontrolü ===
+        # === Contrôle de la stratégie de quarantaine ===
+
         strategy_1 = self.strategy_1_active.get()
         strategy_2 = self.strategy_2_active.get()
 
@@ -275,14 +290,16 @@ class SimulationApp:
                 remaining_pending.append((node, days_left - 1))
         self.pending_infections = remaining_pending
 
-        # Belirti çıkanları I yap, karantinaya hazırlık
+        # === Traiter les infections différées ===
+
         for node in new_symptomatic:
             self.G.nodes[node]["state"] = "I"
             self.G.nodes[node]["days_infected"] = 0
             self.G.nodes[node]["days_symptomatic"] = 0
             self.to_quarantine.append(node)
 
-        # === Karantina 1 gün sonra (yalnızca strateji aktifse) ===
+        # === Quarantaine après 1 jour (si stratégie active uniquement) ===
+
         if strategy_1 or strategy_2:
             still_pending = []
             for node in self.to_quarantine:
@@ -295,13 +312,16 @@ class SimulationApp:
                     still_pending.append(node)
             self.to_quarantine = still_pending
         else:
-            # Strateji seçili değilse karantina uygulanmaz
+            
+            # Si aucune stratégie n’est sélectionnée, pas de quarantaine
+
             self.to_quarantine.clear()
 
-        # === Yeni Bulaşmaları Ekle ===
+        # === Ajouter les nouvelles infections ===
+
         apply_infection(self.G, self.infection_prob, self.pending_infections)
 
-        # === Aşı Uygulaması ===
+         # === Application de la vaccination ===
         if self.step >= self.vaccine_start_day:
             applied, num_vaccinated = apply_vaccination(
                 self.G, self.step, self.vaccine_start_day, self.vaccination_rate, self.vaccination_acceleration
@@ -310,7 +330,8 @@ class SimulationApp:
                 print(f"Aşı uygulandı. Gün: {self.step}, Kişi sayısı: {num_vaccinated}")
 
 
-        # === Salgın Bitti mi? ===
+        # === L’épidémie est-elle terminée ? ===
+
         if not any(self.G.nodes[n]["state"] == "I" for n in self.G.nodes):
             print(f"Épidémie terminée au jour {frame + 1}")
             if self.ani:
@@ -318,12 +339,14 @@ class SimulationApp:
                 save_history_to_csv(self)
             return
 
-        # === Durum Güncellemeleri ===
+    # === Mise à jour des états ===
+
         new_states = {}
         update_states(self.G, new_states, self.recovery_time, self.quarantine_edges)
 
 
-        # === Grafik Güncellemeleri ===
+        # === Mise à jour des graphiques ===
+
         self.ax1.clear()
         nx.draw(self.G, self.pos, node_color=self.get_colors(), node_size=20, ax=self.ax1)
         

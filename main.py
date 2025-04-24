@@ -6,9 +6,11 @@ Date       : 2025
 """
 
 # main.py
-
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 import tkinter as tk
-from simulation import SimulationApp
+from Model.simulation import SimulationApp
 
 import threading
 
